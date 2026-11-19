@@ -1,0 +1,958 @@
+---
+title: "MSc Research Project"
+author: "Adaku"
+date: "2026-11-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Load the packages
+```{r}
+#import the libraries
+library(here)
+library(tidyverse)
+
+library(readxl)
+library(ggplot2)
+
+library(nlme)
+library(DescTools)
+
+library(MASS)
+```
+
+
+## Load the various datasets
+```{r}
+
+lsoa_data_new = read.csv("LSOA21.csv")
+
+deprivation_data = read_csv("deprivation_data.csv") # deprivation dataset
+
+#import the various opioid datasets from opioidprescribing.net
+lowdose_oxycodone = read.csv("lowdose_oxy.csv")
+highdose_oxycodone = read.csv("highdose_oxy.csv")
+lowdose_morphine = read.csv("lowdose_morph.csv")
+high_morphine = read.csv("highdose_morph.csv")
+lowdose_fentanyl = read.csv("lowdose_fentanyl.csv")
+highdose_fentanyl = read.csv("highdose_fentanyl.csv")
+lowdose_buprenorphine = read.csv("lowdose_buprenorphine.csv")
+highdose_buprenorphine = read.csv("highdose_buprenorphine.csv")
+highdose_tramadol = read.csv("highdose_tramadol.csv")
+lowdose_tramadol = read.csv("lowdose_tramadol.csv")
+```
+
+# Load the regional dataset
+
+```{r}
+
+regional_data = read.csv("subicb_to_nhs.csv")
+
+regional_df = regional_data %>%
+  dplyr::select(SICBL26CDH, SICBL26NM, NHSER26NM)%>%  # selecting relevant variables
+  rename(id = SICBL26CDH,
+         subicb = SICBL26NM,
+         region = NHSER26NM)
+
+head(regional_df)
+```
+
+# working on the LSOA dataset
+
+```{r}
+lsoa_new = lsoa_data_new %>%
+  dplyr::select(LSOA21CD, SICBL26CDH)%>%  # selecting relevant variables
+  rename(lsoa_id = LSOA21CD,
+         subicb_id = SICBL26CDH)
+
+head(lsoa_new)
+```
+
+# The deprivation score was used instead of the decile to enable aggregation
+
+```{r}
+
+dep_data = deprivation_data %>%
+  dplyr::select(`LSOA code (2021)`,`Index of Multiple Deprivation (IMD) Score`, 
+         `Income Score (rate)`,
+         `Employment Score (rate)`, 
+         `Education, Skills and Training Score`,
+         `Health Deprivation and Disability Score`,
+         `Crime Score`,
+         `Barriers to Housing and Services Score`,
+         `Living Environment Score`,
+         `Total population: mid 2022`)%>%
+  
+#renaming the variables for readability
+  rename(lsoa_id = `LSOA code (2021)`,
+         imd_score = `Index of Multiple Deprivation (IMD) Score`,
+         income_score = `Income Score (rate)`,
+         employment_score = `Employment Score (rate)`,
+         education_score = `Education, Skills and Training Score`,
+         health_score = `Health Deprivation and Disability Score`,
+         housing_score = `Barriers to Housing and Services Score`,
+         crime_score = `Crime Score`,
+         living_environment_score = `Living Environment Score`,
+         total_population = `Total population: mid 2022`)
+
+head(dep_data)
+```
+
+
+## join the lsoa and imd dataset
+
+```{r}
+lsoa_to_dep_data = left_join(lsoa_new, dep_data, by = "lsoa_id")
+
+head(lsoa_to_dep_data)
+```
+
+#work on the prescription datasets, select relevant variables and rename vaviables
+
+```{r opioid datasets}
+
+#removed the cost of opioids from all datasets
+
+oxy_low = lowdose_oxycodone %>%
+  dplyr::select(-y_actual_cost, -x_actual_cost)%>% 
+  rename(oxycodone_low = y_items)%>%
+  mutate(date = ymd(date))
+
+oxy_high = highdose_oxycodone %>%
+  dplyr::select(-y_actual_cost, -x_actual_cost,)%>%
+  rename(oxycodone_high = y_items)%>%
+  mutate(date = ymd(date))
+
+morphine_lowdose = lowdose_morphine %>%
+  dplyr::select(-y_actual_cost, -x_actual_cost)%>%
+  rename(morphine_lowdose = y_items)%>%
+  mutate(date = ymd(date))
+
+morphine_highdose = high_morphine %>%
+  dplyr::select(-y_actual_cost, -x_actual_cost)%>%
+  rename(morphine_highdose = y_items)%>%
+  mutate(date = ymd(date))
+
+fentanyl_lowdose = lowdose_fentanyl %>%
+  dplyr::select(-y_actual_cost, -x_actual_cost)%>%
+  rename(fentanyl_lowdose = y_items)%>%
+  mutate(date = ymd(date))
+
+fentanyl_highdose = highdose_fentanyl %>%
+  dplyr::select(-y_actual_cost, -x_actual_cost)%>%
+  rename(fentanyl_highdose = y_items)%>%
+  mutate(date = ymd(date))
+
+buprenorphine_lowdose = lowdose_buprenorphine %>%
+  dplyr::select(-y_actual_cost, -x_actual_cost)%>%
+  rename(buprenorphine_lowdose = y_items)%>%
+  mutate(date = ymd(date))
+
+buprenorphine_highdose = highdose_buprenorphine %>%
+  dplyr::select(-y_actual_cost, -x_actual_cost)%>%
+  rename(buprenorphine_highdose = y_items)%>%
+  mutate(date = ymd(date))
+
+tramadol_highdose = highdose_tramadol %>%
+  dplyr::select(-y_actual_cost, -x_actual_cost)%>%
+  rename(tramadol_highdose = y_items)%>%
+  mutate(date = ymd(date))
+
+tramadol_lowdose = lowdose_tramadol %>%
+  dplyr::select(-y_actual_cost, -x_actual_cost)%>%
+  rename(tramadol_lowdose = y_items)%>%
+  mutate(date = ymd(date))
+```
+
+# join all the opioid datasets into 1
+
+```{r}
+opioid_data <- oxy_low %>%
+  left_join(oxy_high,
+    by = c("date", "id", "name", "x_items")
+  ) %>%
+  left_join(
+    morphine_lowdose,
+    by = c("date", "id", "name", "x_items")
+  ) %>%
+  left_join(
+    morphine_highdose,
+    by = c("date", "id", "name", "x_items")
+  )  %>%
+  left_join(
+    fentanyl_lowdose,
+    by = c("date", "id", "name", "x_items")
+  ) %>%
+  left_join(
+    fentanyl_highdose,
+    by = c("date", "id", "name", "x_items")
+  )  %>%
+  left_join(
+    buprenorphine_lowdose,
+    by = c("date", "id", "name", "x_items")
+  ) %>%
+  left_join(
+    buprenorphine_highdose,
+    by = c("date", "id", "name", "x_items")
+  ) %>%
+  left_join(
+    tramadol_highdose,
+    by = c("date", "id", "name", "x_items")
+  ) %>%
+  left_join(
+    tramadol_lowdose,
+    by = c("date", "id", "name", "x_items")
+  ) 
+
+head(opioid_data)
+```
+
+#create a new dataset by computing the mean and standard deviation of the domains of deprivation
+
+```{r}
+
+
+wtavg_data = lsoa_to_dep_data %>%
+  group_by(subicb_id) %>%
+  summarise(avgimdscore = round(weighted.mean(imd_score, total_population), 2),
+            stdimd = round(sd(imd_score), 2),
+            avgincomescore = round(weighted.mean(income_score, w = total_population), 2),
+            stdincome = round(sd(income_score), 2),
+            avgempscore = round(weighted.mean(employment_score, w = total_population, na.rm = TRUE), 2),
+            stdemployment = round(sd(employment_score),2),
+            avgeduscore = round(weighted.mean(education_score, w = total_population, na.rm = TRUE), 2),
+            stdeducation = round(sd(education_score), 2),
+            avghealthscore = round(weighted.mean(health_score, w = total_population, na.rm = TRUE), 2),
+            stdhealth = round(sd(health_score), 2),
+            avgcrimescore = round(weighted.mean(crime_score, w = total_population, na.rm = TRUE), 2),
+            stdcrime = round(sd(crime_score), 2),
+            avghousingscore = round(weighted.mean(housing_score, w = total_population, na.rm = TRUE), 2),
+            stdhousing = round(sd(housing_score), 2),
+            avgenvironment = round(weighted.mean(living_environment_score, w = total_population, na.rm = TRUE), 2),
+            stdenvironment = round(sd(living_environment_score), 2)) %>%
+  rename(id = subicb_id)
+
+head(wtavg_data)
+```
+
+#creating one full dataset of all the datasets
+
+```{r}
+all_data_new = left_join(opioid_data, wtavg_data, by = "id")
+
+head(all_data_new)
+```
+
+#find the total prescription for each opioid for each sub-ICB 
+
+```{r}
+tab2 = all_data_new %>%
+  mutate(period = case_when( date >= as.Date("2021-09-01") &
+        date <= as.Date("2025-03-01") ~ "Before",
+
+      date >= as.Date("2025-04-01") &
+        date <= as.Date("2026-08-01") ~ "After",
+
+      TRUE ~ NA_character_)
+  )%>%
+  filter(!is.na(period)) %>%
+  mutate(
+    period = factor(
+      period,
+      levels = c("Before", "After")
+    )
+  ) %>%
+  
+  group_by(name, period) %>%
+  summarise(
+    total_opioid_items    = sum(x_items, na.rm = TRUE),
+    oxycodone_low         = sum(oxycodone_low, na.rm = TRUE),
+    oxycodone_high        = sum(oxycodone_high, na.rm = TRUE),
+    morphine_low          = sum(morphine_lowdose, na.rm = TRUE),
+    morphine_high         = sum(morphine_highdose, na.rm = TRUE),
+    fentanyl_low          = sum(fentanyl_lowdose, na.rm = TRUE),
+    fentanyl_high         = sum(fentanyl_highdose, na.rm = TRUE),
+    buprenorphine_low     = sum(buprenorphine_lowdose, na.rm = TRUE),
+    buprenorphine_high    = sum(buprenorphine_highdose, na.rm = TRUE),
+    tramadol_low          = sum(tramadol_lowdose, na.rm = TRUE),
+    tramadol_high         = sum(tramadol_highdose, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+head(tab2)
+```
+
+#compute the rate of prescribtion of each subicb
+
+```{r}
+subicb_ratio = tab2%>%
+    mutate(
+    across(
+      oxycodone_low:tramadol_high,
+      ~ 1000 * .x / total_opioid_items, 
+      .names = "{.col}_ratio"
+    )
+  )%>%
+  
+    mutate(
+    total_low_ratio  =  ((oxycodone_low + morphine_low + fentanyl_low +
+                             buprenorphine_low + tramadol_low) / total_opioid_items)*1000,
+    total_high_ratio =  ((oxycodone_high + morphine_high + fentanyl_high +
+                             buprenorphine_high + tramadol_high) / total_opioid_items)*1000,
+    totalmr =  ((oxycodone_low + morphine_low + fentanyl_low +
+                             buprenorphine_low + tramadol_low + oxycodone_high + morphine_high + fentanyl_high +
+                             buprenorphine_high + tramadol_high) / total_opioid_items)*1000 
+  )
+  
+
+head(subicb_ratio)
+```
+
+# descriptive statistics of the opioids
+
+```{r}
+pct_vars = c("oxycodone_low_ratio", "oxycodone_high_ratio",
+              "morphine_low_ratio", "morphine_high_ratio",
+              "fentanyl_low_ratio", "fentanyl_high_ratio",
+              "buprenorphine_low_ratio", "buprenorphine_high_ratio",
+              "tramadol_low_ratio", "tramadol_high_ratio",
+              "total_low_ratio", "total_high_ratio",
+             "totalmr")
+
+table_summary = subicb_ratio %>%
+  group_by(period) %>%
+  summarise(
+    across(
+      all_of(pct_vars),
+      list(
+        mean   = ~ mean(.x, na.rm = TRUE),
+        sd     = ~ sd(.x, na.rm = TRUE),
+        median = ~ median(.x, na.rm = TRUE),
+        q1     = ~ quantile(.x, 0.25, na.rm = TRUE),
+        q3     = ~ quantile(.x, 0.75, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    ),
+    .groups = "drop"
+  )
+
+table_summary
+```
+
+## Objective 1. National time series analysis 
+
+```{r}
+national_monthly_total = all_data_new %>%
+  group_by(date) %>%  # for monthly aggregation
+  summarise(
+    across(
+      c(x_items,
+        oxycodone_low,
+        oxycodone_high,
+        morphine_lowdose,
+        morphine_highdose,
+       
+        fentanyl_lowdose,
+        fentanyl_highdose,
+      
+        buprenorphine_lowdose,
+        buprenorphine_highdose,
+        tramadol_lowdose,
+        tramadol_highdose
+      ),
+      ~ sum(.x, na.rm = TRUE)
+    )
+  ) %>%
+  group_by(date) %>%
+  mutate(total_opioids = sum(c(oxycodone_low, oxycodone_high, morphine_highdose, morphine_lowdose, tramadol_highdose, tramadol_lowdose, fentanyl_lowdose, fentanyl_highdose, buprenorphine_lowdose, buprenorphine_highdose)),
+         all_opioids = sum(x_items),
+         ratio = (total_opioids/all_opioids)*1000) %>%
+  
+  dplyr::select(date, total_opioids, all_opioids, ratio)%>%
+  
+    mutate(period = case_when( date >= as.Date("2021-09-01") &  #before the update
+        date <= as.Date("2025-03-01") ~ "Before",
+
+      date >= as.Date("2025-04-01") &
+        date <= as.Date("2026-08-01") ~ "After",
+
+      TRUE ~ NA_character_)
+  )%>%
+  filter(!is.na(period)) %>%
+  mutate(
+    period = factor(
+      period,
+      levels = c("Before", "After")
+    )
+  )
+
+
+head(national_monthly_total)
+```
+
+#Line graph of the national data
+
+```{r}
+
+national_monthly_total %>%
+  ggplot(aes (x = date,
+              y=ratio))+
+  geom_point()+
+  geom_line()+
+  
+  geom_vline(xintercept = as.Date("2025-03-12"), # date of the policy update
+             colour = "red",
+             linetype = "dashed") +
+
+  
+  xlab('Month')+
+      ylab(str_wrap('Items for Modified-release Opioids per 1000 opioid items', width = 50))+
+      labs(title = 'MR opioid prescription from September 2021 to August 2026')+
+      theme_classic()+
+      theme(axis.text.x = element_text(size = 10),
+            axis.text = element_text(size=12),
+            axis.title = element_text(size = 12),
+            plot.title = element_text(size=12, face = "bold"))
+```
+
+#Run a time series regression analysis
+
+```{r}
+ national_monthly_totalTS = national_monthly_total %>%
+  ungroup()%>%
+  mutate(time = row_number())%>%
+  mutate(mhra_update = if_else(date <= as.Date("2025-03-01"),0,1))%>%
+  mutate(time_after = case_when(mhra_update == 1 ~ row_number()-43, TRUE~0))%>%
+  dplyr::select(date,ratio,time,mhra_update,time_after)
+
+head(national_monthly_totalTS)
+```
+
+# decomposition
+
+```{r}
+ts_data = ts(national_monthly_totalTS$ratio, frequency = 12, start = c(2021, 6))
+decomp = decompose(ts_data)
+plot(decomp)
+```
+
+# adjust for seasonality
+
+```{r}
+deseasonalised = ts_data - seasonal
+deseasonalised
+```
+
+# compute the adjusted rate
+
+```{r}
+its_data = national_monthly_totalTS %>%
+  mutate(rate_adj = as.numeric(deseasonalised))
+
+head(its_data)
+```
+
+# Fit segmented regression with AR(1) correlation structure
+
+```{r}
+model2_gls = gls(rate_adj ~ time + mhra_update + time_after,
+                   data = its_data,
+                   correlation = corAR1(form = ~ time),
+                   method = "ML")
+
+# View results
+summary(model2_gls)
+```
+
+## Run the assumption checks
+
+```{r}
+# Extract normalized residuals 
+acf(residuals(model2_gls, type = "normalized"))
+pacf(residuals(model2_gls, type = "normalized"))
+```
+
+```{r}
+# Test across the first 10 lags using normalized residuals
+Box.test(residuals(model2_gls, type = "normalized"), lag = 10, type = "Ljung-Box")
+```
+
+
+```{r}
+# Extract the normalized residuals
+norm_res <- residuals(model2_gls, type = "normalized")
+
+# Set up a 1x2 plotting window
+par(mfrow = c(1, 2))
+
+# Left Plot: Q-Q Plot
+qqnorm(norm_res, main = "Normal Q-Q Plot")
+qqline(norm_res, col = "red", lwd = 2)
+
+# Right Plot: Histogram with Normal Curve
+hist(norm_res, probability = TRUE, main = "Histogram of Residuals", xlab = "Normalized Residuals")
+curve(dnorm(x, mean = mean(norm_res), sd = sd(norm_res)), add = TRUE, col = "blue", lwd = 2)
+
+```
+
+```{r}
+# Extract normalized residuals and fitted values
+norm_res <- residuals(model2_gls, type = "normalized")
+fitted_vals <- fitted(model2_gls)
+
+# Create the Residuals vs Fitted plot
+plot(fitted_vals, norm_res, 
+     xlab = "Fitted Values", ylab = "Normalized Residuals",
+     main = "Residuals vs Fitted Values Plot",
+     pch = 19, col = alpha("black", 0.6))
+abline(h = 0, col = "red", lwd = 2, lty = 2)
+
+# Add a smooth trend line to check for non-linear patterns
+lines(lowess(fitted_vals, norm_res), col = "blue", lwd = 2)
+
+```
+
+## Objective 2- Regional and level of deprivation prescribing rate variations 
+
+```{r}
+#join the full dataset to the regional data
+
+new_data = left_join(all_data_new, regional_df, 'id')
+
+head(new_data)
+```
+
+# First, a descriptive summary of the regions and social deprivation by 5 years period
+
+```{r}
+objective2_data <- new_data %>%
+  mutate(period = case_when(
+    date >= as.Date("2021-09-01") & date <= as.Date("2025-03-01") ~ "Before",
+    date >= as.Date("2025-04-01") & date <= as.Date("2026-08-01") ~ "After",
+    TRUE ~ NA_character_
+  )) %>%
+  filter(!is.na(period)) %>%
+  group_by(date, name, period, region, avgimdscore, avgincomescore, avgempscore, avgeduscore, avghealthscore, avgcrimescore, avghousingscore, avgenvironment) %>%
+  summarise(
+    mr_items = sum(oxycodone_low + oxycodone_high + morphine_lowdose + morphine_highdose +
+                   fentanyl_lowdose + fentanyl_highdose + buprenorphine_lowdose + buprenorphine_highdose +
+                   tramadol_lowdose + tramadol_highdose, na.rm = TRUE),
+    total_items = sum(x_items, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(period = factor(period, levels = c("Before", "After"))) %>%
+  
+   mutate(rate = (mr_items / total_items) * 1000)%>%
+  
+   mutate(
+    imd_quintile_label = factor(ntile(desc(avgimdscore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  ) %>%
+   mutate(
+    income_quintile_label = factor(ntile(desc(avgincomescore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  ) %>%
+   mutate(
+    housing_quintile_label = factor(ntile(desc(avghousingscore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  ) %>%
+   mutate(
+    environment_quintile_label = factor(ntile(desc(avgenvironment), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  ) %>%
+   mutate(
+    health_quintile_label = factor(ntile(desc(avghealthscore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  )%>%
+   mutate(
+    crime_quintile_label = factor(ntile(desc(avgcrimescore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  )%>%
+   mutate(
+    education_quintile_label = factor(ntile(desc(avgeduscore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  )%>%
+   mutate(
+    employment_quintile_label = factor(ntile(desc(avgempscore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  )
+  
+  
+
+head(objective2_data)
+```
+
+## summary statistics
+
+```{r}
+regional_desc = sub_data %>%
+  group_by(region, period) %>%
+  summarise(n = n(),
+            median_rate = median(rate, na.rm = TRUE),
+            q1 = quantile(rate, 0.25, na.rm = TRUE),
+            q3 = quantile(rate, 0.75, na.rm = TRUE),
+            .groups = "drop")
+
+
+imd_desc <- sub_data %>%
+  group_by(imd_quintile_label, period) %>%
+  summarise(n = n(),
+            median_rate = median(rate, na.rm = TRUE),
+            q1 = quantile(rate, 0.25, na.rm = TRUE),
+            q3 = quantile(rate, 0.75, na.rm = TRUE),
+            .groups = "drop")
+
+income_desc <- sub_data %>%
+  group_by(income_quintile_label, period) %>%
+  summarise(n = n(),
+            median_rate = median(rate, na.rm = TRUE),
+            q1 = quantile(rate, 0.25, na.rm = TRUE),
+            q3 = quantile(rate, 0.75, na.rm = TRUE),
+            .groups = "drop")
+
+housing_desc <- sub_data %>%
+  group_by(housing_quintile_label, period) %>%
+  summarise(n = n(),
+            median_rate = median(rate, na.rm = TRUE),
+            q1 = quantile(rate, 0.25, na.rm = TRUE),
+            q3 = quantile(rate, 0.75, na.rm = TRUE),
+            .groups = "drop")
+
+environment_desc <- sub_data %>%
+  group_by(environment_quintile_label, period) %>%
+  summarise(n = n(),
+            median_rate = median(rate, na.rm = TRUE),
+            q1 = quantile(rate, 0.25, na.rm = TRUE),
+            q3 = quantile(rate, 0.75, na.rm = TRUE),
+            .groups = "drop")
+
+health_desc <- sub_data %>%
+  group_by(health_quintile_label, period) %>%
+  summarise(n = n(),
+            median_rate = median(rate, na.rm = TRUE),
+            q1 = quantile(rate, 0.25, na.rm = TRUE),
+            q3 = quantile(rate, 0.75, na.rm = TRUE),
+            .groups = "drop")
+
+
+crime_desc <- sub_data %>%
+  group_by(crime_quintile_label, period) %>%
+  summarise(n = n(),
+            median_rate = median(rate, na.rm = TRUE),
+            q1 = quantile(rate, 0.25, na.rm = TRUE),
+            q3 = quantile(rate, 0.75, na.rm = TRUE),
+            .groups = "drop")
+
+education_desc <- sub_data %>%
+  group_by(education_quintile_label, period) %>%
+  summarise(n = n(),
+            median_rate = median(rate, na.rm = TRUE),
+            q1 = quantile(rate, 0.25, na.rm = TRUE),
+            q3 = quantile(rate, 0.75, na.rm = TRUE),
+            .groups = "drop")
+
+employment_desc <- sub_data %>%
+  group_by(employment_quintile_label, period) %>%
+  summarise(n = n(),
+            median_rate = median(rate, na.rm = TRUE),
+            q1 = quantile(rate, 0.25, na.rm = TRUE),
+            q3 = quantile(rate, 0.75, na.rm = TRUE),
+            .groups = "drop")
+
+regional_desc
+imd_desc
+income_desc
+housing_desc
+environment_desc
+health_desc
+crime_desc
+education_desc
+employment_desc
+```
+
+#plot a time series graph for each NHS region
+
+```{r}
+region_order = objective2_data %>%
+  filter(!is.na(region)) %>%
+  group_by(region) %>%
+  summarise(overall_median = median(rate, na.rm = TRUE)) %>%
+  arrange(desc(overall_median)) %>%
+  pull(region)
+
+region_plot = objective2_data %>%
+  filter(!is.na(region)) %>%
+  mutate(region = factor(region, levels = region_order)) %>%
+  group_by(date, region) %>%
+  summarise(rate = median(rate, na.rm = TRUE), .groups = "drop") %>%
+  ggplot(aes(x = date, y = rate, colour = region)) +
+  geom_line() +
+  geom_vline(xintercept = as.Date("2025-03-01"), linetype = "dashed", colour = "grey40") +
+  facet_wrap(~ region) +
+  scale_y_continuous(limits = c(20, 150)) +
+  labs(title = "MR opioid prescribing by NHS region, September 2021 to August 2026",
+       x = "Month", y = "MR opioid items per 1,000 opioid items", , colour = "Region") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "none")
+
+region_plot
+```
+
+
+# Use 12 months before and after the MHRA update to run descriptive analysis and regression analysis #
+
+```{r}
+# Building the same statistics for 1 year before and 1 year after
+
+oneyeardiff_data <- new_data %>%
+  mutate(period = case_when(
+    date >= as.Date("2024-04-01") & date <= as.Date("2025-03-01") ~ "Before",
+    date >= as.Date("2025-04-01") & date <= as.Date("2026-03-01") ~ "After",
+    TRUE ~ NA_character_
+  )) %>%
+  filter(!is.na(period)) %>%
+  group_by(date, name, period, region, avgimdscore, avgincomescore, avgempscore, avgeduscore, avghealthscore, avgcrimescore, avghousingscore, avgenvironment) %>%
+  summarise(
+    mr_items = sum(oxycodone_low + oxycodone_high + morphine_lowdose + morphine_highdose +
+                   fentanyl_lowdose + fentanyl_highdose + buprenorphine_lowdose + buprenorphine_highdose +
+                   tramadol_lowdose + tramadol_highdose, na.rm = TRUE),
+    total_items = sum(x_items, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(period = factor(period, levels = c("Before", "After"))) 
+  
+  
+
+head(oneyeardiff_data)
+```
+
+# collapse the data to have the prescription rate per month per sub-ICB
+
+```{r}
+collapsed_oneyear_data <- oneyeardiff_data %>%
+  filter(!is.na(region)) %>%
+  group_by(name, period, region, avgimdscore, avgincomescore, avgempscore, avgeduscore, avghealthscore, avgcrimescore, avghousingscore, avgenvironment) %>%
+  summarise(
+    mr_items = sum(mr_items, na.rm = TRUE),
+    total_items = sum(total_items, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(period = factor(period, levels = c("Before", "After")),
+         region = factor(region))%>%
+  
+   mutate(rate = (mr_items / total_items) * 1000)%>%
+  
+   mutate(
+    imd_quintile_label = factor(ntile(desc(avgimdscore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  ) %>%
+   mutate(
+    income_quintile_label = factor(ntile(desc(avgincomescore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  ) %>%
+   mutate(
+    housing_quintile_label = factor(ntile(desc(avghousingscore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  ) %>%
+   mutate(
+    environment_quintile_label = factor(ntile(desc(avgenvironment), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  ) %>%
+   mutate(
+    health_quintile_label = factor(ntile(desc(avghealthscore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  )%>%
+   mutate(
+    crime_quintile_label = factor(ntile(desc(avgcrimescore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  )%>%
+   mutate(
+    education_quintile_label = factor(ntile(desc(avgeduscore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  )%>%
+   mutate(
+    employment_quintile_label = factor(ntile(desc(avgempscore), 5),
+                                 levels = 1:5,
+                                 labels = c("1 - Most deprived", "2", "3", "4", "5 - Least deprived"))
+  )
+
+## Check it collapsed correctly
+nrow(collapsed_oneyear_data)                                     # should be 214 now (107 x 2)
+collapsed_oneyear_data %>% count(name, period) %>% distinct(n)    # should show only the value 1
+table(collapsed_oneyear_data$period)
+table(collapsed_oneyear_data$region)
+```
+
+# Run the neagtive binomial regression for region and domains of deprivation
+
+```{r}
+#Did the change vary significantly by region
+region_model <- glm.nb(mr_items ~ period * region + offset(log(total_items)), data = collapsed_oneyear_data)
+
+vc_region <- vcovCL(region_model, cluster = collapsed_oneyear_data$name)
+ct_region <- coeftest(region_model, vcov. = vc_region)
+ci_region <- coefci(region_model, vcov. = vc_region)
+
+irr_region <- tibble(
+  term = rownames(ct_region),
+  IRR = exp(ct_region[, "Estimate"]),
+  lower = exp(ci_region[, 1]),
+  upper = exp(ci_region[, 2]),
+  p_value = ct_region[, "Pr(>|z|)"]
+)
+irr_region
+```
+
+# Run different models for each domain of deprivation
+
+```{r}
+m_imd_quintile <- glm.nb(mr_items ~ period * imd_quintile_label + region + offset(log(total_items)),
+                          data = collapsed_oneyear_data)
+
+vc <- vcovCL(m_imd_quintile, cluster = collapsed_oneyear_data$name)
+ct <- coeftest(m_imd_quintile, vcov. = vc)
+ci <- coefci(m_imd_quintile, vcov. = vc)
+
+irr_imd_quintile <- tibble(
+  term = rownames(ct),
+  IRR = exp(ct[, "Estimate"]),
+  lower = exp(ci[, 1]),
+  upper = exp(ci[, 2]),
+  p_value = ct[, "Pr(>|z|)"]
+)
+irr_imd_quintile
+```
+
+
+```{r}
+m_income_quintile <- glm.nb(mr_items ~ period * income_quintile_label + region + offset(log(total_items)),
+                          data = collapsed_oneyear_data)
+
+vc <- vcovCL(m_income_quintile, cluster = collapsed_oneyear_data$name)
+ct <- coeftest(m_income_quintile, vcov. = vc)
+ci <- coefci(m_income_quintile, vcov. = vc)
+
+irr_income_quintile <- tibble(
+  term = rownames(ct),
+  IRR = exp(ct[, "Estimate"]),
+  lower = exp(ci[, 1]),
+  upper = exp(ci[, 2]),
+  p_value = ct[, "Pr(>|z|)"]
+)
+irr_income_quintile
+
+m_health_quintile <- glm.nb(mr_items ~ period * health_quintile_label + region + offset(log(total_items)),
+                          data = collapsed_oneyear_data)
+
+vc <- vcovCL(m_health_quintile, cluster = collapsed_oneyear_data$name)
+ct <- coeftest(m_health_quintile, vcov. = vc)
+ci <- coefci(m_health_quintile, vcov. = vc)
+
+irr_health_quintile <- tibble(
+  term = rownames(ct),
+  IRR = exp(ct[, "Estimate"]),
+  lower = exp(ci[, 1]),
+  upper = exp(ci[, 2]),
+  p_value = ct[, "Pr(>|z|)"]
+)
+irr_health_quintile
+
+m_crime_quintile <- glm.nb(mr_items ~ period * crime_quintile_label + region + offset(log(total_items)),
+                          data = collapsed_oneyear_data)
+
+vc <- vcovCL(m_crime_quintile, cluster = collapsed_oneyear_data$name)
+ct <- coeftest(m_crime_quintile, vcov. = vc)
+ci <- coefci(m_crime_quintile, vcov. = vc)
+
+irr_crime_quintile <- tibble(
+  term = rownames(ct),
+  IRR = exp(ct[, "Estimate"]),
+  lower = exp(ci[, 1]),
+  upper = exp(ci[, 2]),
+  p_value = ct[, "Pr(>|z|)"]
+)
+irr_crime_quintile
+
+m_education_quintile <- glm.nb(mr_items ~ period * education_quintile_label + region + offset(log(total_items)),
+                          data = collapsed_oneyear_data)
+
+vc <- vcovCL(m_education_quintile, cluster = collapsed_oneyear_data$name)
+ct <- coeftest(m_education_quintile, vcov. = vc)
+ci <- coefci(m_education_quintile, vcov. = vc)
+
+irr_education_quintile <- tibble(
+  term = rownames(ct),
+  IRR = exp(ct[, "Estimate"]),
+  lower = exp(ci[, 1]),
+  upper = exp(ci[, 2]),
+  p_value = ct[, "Pr(>|z|)"]
+)
+irr_education_quintile
+
+m_environment_quintile <- glm.nb(mr_items ~ period * environment_quintile_label + region + offset(log(total_items)),
+                          data = collapsed_oneyear_data)
+
+vc <- vcovCL(m_environment_quintile, cluster = collapsed_oneyear_data$name)
+ct <- coeftest(m_environment_quintile, vcov. = vc)
+ci <- coefci(m_environment_quintile, vcov. = vc)
+
+irr_environment_quintile <- tibble(
+  term = rownames(ct),
+  IRR = exp(ct[, "Estimate"]),
+  lower = exp(ci[, 1]),
+  upper = exp(ci[, 2]),
+  p_value = ct[, "Pr(>|z|)"]
+)
+irr_environment_quintile
+
+m_housing_quintile <- glm.nb(mr_items ~ period * housing_quintile_label + region + offset(log(total_items)),
+                          data = collapsed_oneyear_data)
+
+vc <- vcovCL(m_housing_quintile, cluster = collapsed_oneyear_data$name)
+ct <- coeftest(m_housing_quintile, vcov. = vc)
+ci <- coefci(m_housing_quintile, vcov. = vc)
+
+irr_housing_quintile <- tibble(
+  term = rownames(ct),
+  IRR = exp(ct[, "Estimate"]),
+  lower = exp(ci[, 1]),
+  upper = exp(ci[, 2]),
+  p_value = ct[, "Pr(>|z|)"]
+)
+irr_housing_quintile
+```
+
+```{r}
+m_employment_quintile <- glm.nb(mr_items ~ period * employment_quintile_label + region + offset(log(total_items)),
+                          data = collapsed_oneyear_data)
+
+vc <- vcovCL(m_employment_quintile, cluster = collapsed_oneyear_data$name)
+ct <- coeftest(m_employment_quintile, vcov. = vc)
+ci <- coefci(m_employment_quintile, vcov. = vc)
+
+irr_employment_quintile <- tibble(
+  term = rownames(ct),
+  IRR = exp(ct[, "Estimate"]),
+  lower = exp(ci[, 1]),
+  upper = exp(ci[, 2]),
+  p_value = ct[, "Pr(>|z|)"]
+)
+irr_employment_quintile
+```
